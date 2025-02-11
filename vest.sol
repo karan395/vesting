@@ -74,14 +74,14 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         uint256 percentPerInterval;
 
         if (params.vestingType == VestingType.QUARTERLY_25) {
-            cliffDuration = 365 days;
-            vestingDuration = 730 days;
-            releaseInterval = 90 days;
+            cliffDuration = 5 minutes;
+            vestingDuration = 15 minutes;
+            releaseInterval = 2 minutes;
             percentPerInterval = 25;
         } else if (params.vestingType == VestingType.QUARTERLY_50) {
-            cliffDuration = 365 days;
-            vestingDuration = 730 days;
-            releaseInterval = 90 days;
+            cliffDuration = 5 minutes;
+            vestingDuration = 15 minutes;
+            releaseInterval = 2 minutes;
             percentPerInterval = 50;
         } else {
             require(params.customCliffDuration > 0, "Invalid cliff duration");
@@ -154,6 +154,16 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
 
         return vestedAmount - schedule.releasedAmount;
     }
+function getNextReleaseTime(address beneficiary) public view returns (uint256) {
+    VestingSchedule memory schedule = vestingSchedules[beneficiary];
+    if (!schedule.isActive || !schedule.timerActivated) return 0;
+
+    uint256 elapsedTime = block.timestamp - schedule.startTime;
+    uint256 intervalsPassed = elapsedTime / schedule.releaseInterval;
+
+    // Calculate the next release time (after the current interval)
+    return schedule.startTime + (intervalsPassed + 1) * schedule.releaseInterval;
+}
 
     function getVestingDetails(address beneficiary) external view returns (
         uint256 totalAmount,
@@ -165,6 +175,8 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         VestingType vestingType
     ) {
         VestingSchedule memory schedule = vestingSchedules[beneficiary];
+        nextReleaseTime = getNextReleaseTime(beneficiary); // Get the next release time dynamically
+
         return (
             schedule.totalAmount,
             schedule.releasedAmount,
