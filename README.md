@@ -153,3 +153,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 To update the contract, you can deploy a new implementation and upgrade the contract using the UUPS proxy pattern.
 
 
+to use this contract 
+1. deploy this contract using deploy with proxy option on remix
+2. while deploying add main token contract address there 
+3.  after call add vesting vesting accourding to the requirement 
+4.  after that call activate vesting option 
+5.  then after the entered time intervals release rewards to beneficiary
