@@ -6,14 +6,13 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
-// Interface for the main token contract (BEP-20 or ERC-20)
 interface IMainToken {
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
 }
 
-contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable, UUPSUpgradeable {
+contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
     IMainToken public mainToken;
 
     enum VestingType { QUARTERLY_25, QUARTERLY_50, CUSTOM }
@@ -44,11 +43,16 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
 
     mapping(address => VestingSchedule) public vestingSchedules;
     address[] private beneficiaries;
+    
+    uint256 private totalDeposited;
+    uint256 private totalAllocated;
 
+    event TokensDeposited(address indexed depositor, uint256 amount);
     event ScheduleCreated(address indexed beneficiary, uint256 totalAmount, uint256 startTime, VestingType vestingType);
     event TokensReleased(address indexed beneficiary, uint256 amount);
     event ScheduleDeactivated(address indexed beneficiary);
     event VestingActivated(address indexed beneficiary, uint256 activationTime);
+    event TokensWithdrawnByOwner(uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -56,17 +60,34 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
     }
 
     function initialize(address _mainToken) public initializer {
+        require(_mainToken != address(0), "Invalid token address");
         __Pausable_init();
-    __Ownable_init(msg.sender); // Pass msg.sender as the initial owner
+        __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
         mainToken = IMainToken(_mainToken);
+        totalDeposited = 0;
+        totalAllocated = 0;
     }
+
+  
+
+     function depositTokens() external onlyOwner {
+    uint256 newBalance = mainToken.balanceOf(address(this));
+    require(newBalance > totalDeposited, "No tokens deposited");
+
+    uint256 depositAmount = newBalance - totalDeposited;
+    totalDeposited += depositAmount;
+
+    emit TokensDeposited(msg.sender, depositAmount);
+}
 
     function createVestingSchedule(VestingParams calldata params) external onlyOwner whenNotPaused {
         require(params.beneficiary != address(0), "Invalid beneficiary");
         require(params.amount > 0, "Amount must be > 0");
         require(params.startTime >= block.timestamp, "Start time must be in the future");
         require(!vestingSchedules[params.beneficiary].isActive, "Schedule already exists");
+        require(totalDeposited - totalAllocated >= params.amount, "Insufficient available balance");
 
         uint256 cliffDuration;
         uint256 vestingDuration;
@@ -74,14 +95,14 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         uint256 percentPerInterval;
 
         if (params.vestingType == VestingType.QUARTERLY_25) {
-             cliffDuration = 365 days;
-            vestingDuration = 730 days;
-            releaseInterval = 90 days;
+            cliffDuration = 1 minutes;
+            vestingDuration = 5 minutes;
+            releaseInterval = 1 minutes;
             percentPerInterval = 25;
         } else if (params.vestingType == VestingType.QUARTERLY_50) {
-             cliffDuration = 365 days;
-            vestingDuration = 730 days;
-            releaseInterval = 90 days;
+           cliffDuration = 1 minutes;
+            vestingDuration = 5 minutes;
+            releaseInterval = 1 minutes;
             percentPerInterval = 50;
         } else {
             require(params.customCliffDuration > 0, "Invalid cliff duration");
@@ -109,8 +130,7 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         });
 
         beneficiaries.push(params.beneficiary);
-        require(mainToken.transferFrom(msg.sender, address(this), params.amount), "Token transfer failed");
-
+        totalAllocated += params.amount;
         emit ScheduleCreated(params.beneficiary, params.amount, params.startTime, params.vestingType);
     }
 
@@ -125,28 +145,34 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         emit VestingActivated(beneficiary, block.timestamp);
     }
 
-    function release(address beneficiary) external whenNotPaused {
+    function release(address beneficiary) external whenNotPaused nonReentrant onlyOwner {
         VestingSchedule storage schedule = vestingSchedules[beneficiary];
         require(schedule.isActive, "No active schedule");
         require(schedule.timerActivated, "Vesting not activated");
 
         uint256 releasableAmount = _calculateReleasableAmount(schedule);
         require(releasableAmount > 0, "No tokens to release");
+        
+        uint256 contractBalance = mainToken.balanceOf(address(this));
+        require(contractBalance >= releasableAmount, "Insufficient contract balance");
 
         schedule.releasedAmount += releasableAmount;
-        require(mainToken.transfer(beneficiary, releasableAmount), "Token transfer failed");
+        totalAllocated -= releasableAmount;
 
         emit TokensReleased(beneficiary, releasableAmount);
     }
 
     function _calculateReleasableAmount(VestingSchedule memory schedule) internal view returns (uint256) {
+        require(schedule.releaseInterval > 0, "Release interval cannot be zero");
+
         if (!schedule.isActive || !schedule.timerActivated || block.timestamp < schedule.startTime + schedule.cliffDuration) {
             return 0;
         }
 
         uint256 elapsedTime = block.timestamp - schedule.startTime;
         uint256 intervalsPassed = elapsedTime / schedule.releaseInterval;
-
+      require(schedule.releaseInterval > 0, "Release interval cannot be zero");
+      require(schedule.percentPerInterval > 0, "Percent per interval cannot be zero");
         uint256 vestedAmount = (schedule.totalAmount * schedule.percentPerInterval * intervalsPassed) / 100;
         if (vestedAmount > schedule.totalAmount) {
             vestedAmount = schedule.totalAmount;
@@ -154,16 +180,17 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
 
         return vestedAmount - schedule.releasedAmount;
     }
-function getNextReleaseTime(address beneficiary) public view returns (uint256) {
-    VestingSchedule memory schedule = vestingSchedules[beneficiary];
-    if (!schedule.isActive || !schedule.timerActivated) return 0;
 
-    uint256 elapsedTime = block.timestamp - schedule.startTime;
-    uint256 intervalsPassed = elapsedTime / schedule.releaseInterval;
+    function getNextReleaseTime(address beneficiary) public view returns (uint256) {
+        VestingSchedule memory schedule = vestingSchedules[beneficiary];
+        if (!schedule.isActive || !schedule.timerActivated) return 0;
 
-    // Calculate the next release time (after the current interval)
-    return schedule.startTime + (intervalsPassed + 1) * schedule.releaseInterval;
-}
+        require(schedule.releaseInterval > 0, "Release interval cannot be zero");
+        uint256 elapsedTime = block.timestamp - schedule.startTime;
+        uint256 intervalsPassed = elapsedTime / schedule.releaseInterval;
+
+        return schedule.startTime + (intervalsPassed + 1) * schedule.releaseInterval;
+    }
 
     function getVestingDetails(address beneficiary) external view returns (
         uint256 totalAmount,
@@ -175,7 +202,7 @@ function getNextReleaseTime(address beneficiary) public view returns (uint256) {
         VestingType vestingType
     ) {
         VestingSchedule memory schedule = vestingSchedules[beneficiary];
-        nextReleaseTime = getNextReleaseTime(beneficiary); // Get the next release time dynamically
+        nextReleaseTime = getNextReleaseTime(beneficiary);
 
         return (
             schedule.totalAmount,
@@ -188,9 +215,16 @@ function getNextReleaseTime(address beneficiary) public view returns (uint256) {
         );
     }
 
+    function withdrawUnallocatedTokens() external onlyOwner {
+        uint256 unallocated = totalDeposited - totalAllocated;
+        require(unallocated > 0, "No unallocated tokens");
+        
+        totalDeposited -= unallocated;
+        emit TokensWithdrawnByOwner(unallocated);
+    }
+
     function deactivateSchedule(address beneficiary) external onlyOwner {
         require(vestingSchedules[beneficiary].isActive, "No active schedule");
-
         vestingSchedules[beneficiary].isActive = false;
         emit ScheduleDeactivated(beneficiary);
     }
@@ -205,6 +239,14 @@ function getNextReleaseTime(address beneficiary) public view returns (uint256) {
 
     function getAllBeneficiaries() external view returns (address[] memory) {
         return beneficiaries;
+    }
+
+    function getTotalDeposited() external view returns (uint256) {
+        return totalDeposited;
+    }
+
+    function getTotalAllocated() external view returns (uint256) {
+        return totalAllocated;
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
