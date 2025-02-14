@@ -82,7 +82,7 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
     emit TokensDeposited(msg.sender, depositAmount);
 }
 
-    function createVestingSchedule(VestingParams calldata params) external onlyOwner whenNotPaused {
+    function createVestingSchedule(VestingParams calldata params) public  onlyOwner whenNotPaused {
         require(params.beneficiary != address(0), "Invalid beneficiary");
         require(params.amount > 0, "Amount must be > 0");
         require(params.startTime >= block.timestamp, "Start time must be in the future");
@@ -95,14 +95,14 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         uint256 percentPerInterval;
 
         if (params.vestingType == VestingType.QUARTERLY_25) {
-              cliffDuration = 365 days;
+            cliffDuration = 365 days;
             vestingDuration = 730 days;
             releaseInterval = 90 days;
-            percentPerInterval = 25;
+             percentPerInterval = 25;
         } else if (params.vestingType == VestingType.QUARTERLY_50) {
-             cliffDuration = 365 days;
-            vestingDuration = 730 days;
-            releaseInterval = 90 days;
+           cliffDuration = 365 days;
+           vestingDuration = 730 days;
+           releaseInterval = 90 days;
             percentPerInterval = 50;
         } else {
             require(params.customCliffDuration > 0, "Invalid cliff duration");
@@ -119,7 +119,7 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         vestingSchedules[params.beneficiary] = VestingSchedule({
             totalAmount: params.amount,
             releasedAmount: 0,
-            startTime: params.startTime,
+            startTime: 0,
             cliffDuration: cliffDuration,
             vestingDuration: vestingDuration,
             releaseInterval: releaseInterval,
@@ -133,6 +133,24 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         totalAllocated += params.amount;
         emit ScheduleCreated(params.beneficiary, params.amount, params.startTime, params.vestingType);
     }
+
+    function createVestingbatch(VestingParams[] calldata paramsList) external onlyOwner whenNotPaused {
+    uint256 totalAmountToAllocate = 0;
+
+    // Calculate total amount to allocate to ensure sufficient balance
+    for (uint256 i = 0; i < paramsList.length; i++) {
+        totalAmountToAllocate += paramsList[i].amount;
+    }
+
+    // Check if enough unallocated tokens are available
+    require(totalDeposited - totalAllocated >= totalAmountToAllocate, "Insufficient available balance");
+
+    // Create vesting schedules for each beneficiary
+    for (uint256 i = 0; i < paramsList.length; i++) {
+        createVestingSchedule(paramsList[i]);
+        emit ScheduleCreated(paramsList[i].beneficiary, paramsList[i].amount, paramsList[i].startTime, paramsList[i].vestingType);
+    }
+}
 
     function activateVesting(address beneficiary) external onlyOwner {
         VestingSchedule storage schedule = vestingSchedules[beneficiary];
@@ -207,7 +225,7 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         return (
             schedule.totalAmount,
             schedule.releasedAmount,
-            nextReleaseTime,
+            schedule.startTime + schedule.cliffDuration,
             schedule.totalAmount - schedule.releasedAmount,
             schedule.isActive,
             schedule.timerActivated,
