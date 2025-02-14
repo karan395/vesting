@@ -95,14 +95,14 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         uint256 percentPerInterval;
 
         if (params.vestingType == VestingType.QUARTERLY_25) {
-            cliffDuration = 1 minutes;
-            vestingDuration = 5 minutes;
-            releaseInterval = 1 minutes;
+              cliffDuration = 365 days;
+            vestingDuration = 730 days;
+            releaseInterval = 90 days;
             percentPerInterval = 25;
         } else if (params.vestingType == VestingType.QUARTERLY_50) {
-           cliffDuration = 1 minutes;
-            vestingDuration = 5 minutes;
-            releaseInterval = 1 minutes;
+             cliffDuration = 365 days;
+            vestingDuration = 730 days;
+            releaseInterval = 90 days;
             percentPerInterval = 50;
         } else {
             require(params.customCliffDuration > 0, "Invalid cliff duration");
@@ -207,7 +207,7 @@ contract TokenVesting is Initializable, PausableUpgradeable, OwnableUpgradeable,
         return (
             schedule.totalAmount,
             schedule.releasedAmount,
-            schedule.startTime + schedule.cliffDuration,
+            nextReleaseTime,
             schedule.totalAmount - schedule.releasedAmount,
             schedule.isActive,
             schedule.timerActivated,
