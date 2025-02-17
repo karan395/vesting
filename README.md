@@ -1,155 +1,90 @@
 
 # TokenVesting Contract
 
-This repository contains a smart contract for token vesting that can be used with BEP-20 or ERC-20 tokens. The contract provides a mechanism to manage and release tokens over time based on different vesting schedules, which are useful for rewarding team members, investors, or other stakeholders.
+This smart contract allows the creation of customizable vesting schedules for token distributions, designed to be upgradeable, pausable, and ownable. It is intended for the distribution of tokens over time with customizable cliff and vesting durations, with support for both individual and batch vesting schedule creation. 
 
-The contract is **ownable**, **pausable**, and **upgradeable**, which allows for future security updates and flexibility in managing the contract.
+## Features
 
-## Key Features
+- **Custom Vesting**: Allows creation of quarterly or custom vesting schedules.
+- **Token Deposits**: Tokens can be deposited into the contract and allocated to beneficiaries.
+- **Vesting Activation**: Beneficiaries can activate vesting schedules and claim their tokens based on the schedule.
+- **Token Revocation**: Vesting schedules can be revoked, and unvested tokens returned to the owner.
+- **Upgradable**: The contract is upgradeable through UUPS proxy pattern.
+- **Pausable**: The contract can be paused and unpaused by the owner.
+- **Reentrancy Protection**: Uses a reentrancy guard to prevent reentrancy attacks.
+- **Beneficiary Management**: Supports individual and batch creation of vesting schedules.
 
-- **Three Vesting Types**:
-  1. **Locked for 12 months, then 25% released quarterly**.
-  2. **Locked for 12 months, then 50% released quarterly**.
-  3. **Custom vesting with configurable cliff, vesting period, release interval, and release percentage**.
+## Contract Components
 
-- **Vesting Timer Activation**:
-  - The vesting timer can be started at any time by the owner.
-  - Until activated, the vesting schedule will respect the default 12-month cliff.
+1. **Vesting Schedule Structure**: Defines the vesting details including start time, cliff duration, vesting duration, release intervals, and vesting percentages.
+2. **Main Token Interface**: Interacts with the main token that is being vested, implementing balance checks, transfers, and ownership validation.
+3. **Owner Control**: Only the owner (token owner) can deposit tokens, create vesting schedules, and manage (pause/unpause, revoke) the contract.
 
-- **Public Vesting Information**:
-  - All vesting details, including start time, cliff duration, and remaining tokens, are visible to the public.
+## Contract Structure
 
-- **Owner Flexibility**:
-  - The owner can pause/unpause the contract, deactivate vesting schedules, and release tokens manually at any time.
-  - The owner can stop specific addresses from receiving further tokens once their vesting period has ended.
+### 1. **Vesting Schedule Creation**
 
-- **Customizable Start Date**:
-  - The first token release date is customizable for each beneficiary to allow synchronization.
+- **VestingType**: 
+  - `QUARTERLY_25` — Vesting occurs quarterly with 25% of the total amount released each quarter.
+  - `QUARTERLY_50` — Vesting occurs quarterly with 50% of the total amount released each quarter.
+  - `CUSTOM` — Custom vesting schedules where the cliff duration, vesting duration, release intervals, and percentage per interval can be defined.
 
-- **Bulk Vesting**:
-  - The owner can allocate tokens to multiple beneficiaries at once with different amounts and vesting schedules.
+### 2. **Vesting Activation**
+
+After creating the vesting schedule, the owner must activate it by calling `activateVesting(beneficiary)`. Once activated, the beneficiary can begin claiming tokens based on the release intervals.
+
+### 3. **Token Claiming**
+
+The beneficiary can claim tokens at each release interval by calling the `claim()` function, which calculates how much of the vested tokens can be withdrawn.
+
+### 4. **Vesting Revocation**
+
+The owner can revoke a vesting schedule, returning any unvested tokens to the owner and deactivating the schedule.
+
+### 5. **Batch Vesting Creation**
+
+The owner can create multiple vesting schedules for different beneficiaries at once by calling `createVestingbatch(paramsList)`.
 
 ## Functions
 
-### `initialize(address _mainToken)`
-Initializes the contract with the main token contract address.
+### Public Functions
+- **`depositTokens()`**: Deposits tokens into the contract.
+- **`createVestingSchedule(VestingParams calldata params)`**: Creates a vesting schedule for a beneficiary.
+- **`createVestingbatch(VestingParams[] calldata paramsList)`**: Creates multiple vesting schedules in a batch.
+- **`activateVesting(address beneficiary)`**: Activates vesting for a specific beneficiary.
+- **`claim()`**: Allows beneficiaries to claim vested tokens.
+- **`revokeVesting(address _beneficiary)`**: Revokes a vesting schedule and returns unvested tokens to the owner.
+- **`release(address beneficiary)`**: Releases vested tokens to the beneficiary on behalf of the owner.
+- **`getNextReleaseTime(address beneficiary)`**: Returns the time of the next scheduled release for a beneficiary.
+- **`getVestingDetails(address beneficiary)`**: Returns details of a beneficiary's vesting schedule.
+- **`withdrawUnallocatedTokens()`**: Allows the owner to withdraw any unallocated tokens.
+- **`deactivateSchedule(address beneficiary)`**: Deactivates a vesting schedule for a beneficiary.
+- **`pause()`**: Pauses the contract.
+- **`unpause()`**: Unpauses the contract.
+- **`getAllBeneficiaries()`**: Returns a list of all beneficiaries.
+- **`getTotalDeposited()`**: Returns the total amount of tokens deposited into the contract.
+- **`getTotalAllocated()`**: Returns the total amount of tokens allocated to beneficiaries.
 
-- `_mainToken`: Address of the main BEP-20 or ERC-20 token used for vesting.
+### Internal Functions
+- **`_calculateReleasableAmount()`**: Internal function to calculate the amount of tokens a beneficiary is eligible to claim.
+- **`_authorizeUpgrade(address newImplementation)`**: Internal function to authorize upgrades for the contract (for upgradeable contracts).
 
-### `createVestingSchedule(VestingParams calldata params)`
-Creates a new vesting schedule for a beneficiary.
+## How to Use
 
-- **VestingParams**:
-  - `beneficiary`: Address of the recipient.
-  - `amount`: Total tokens allocated to the beneficiary.
-  - `startTime`: Timestamp when vesting starts.
-  - `vestingType`: Type of vesting schedule (QUARTERLY_25, QUARTERLY_50, or CUSTOM).
-  - `customCliffDuration`: Duration of the custom cliff (for custom vesting).
-  - `customVestingDuration`: Duration of the custom vesting period.
-  - `customReleaseInterval`: Release interval for custom vesting.
-  - `customPercentPerInterval`: Percent released per interval for custom vesting.
+1. **Deploy the Contract**: Deploy the contract with the address of the main token that will be vested.
+2. **Deposit Tokens**: Use the `depositTokens()` function to deposit tokens into the contract.
+3. **Create Vesting Schedules**: Call `createVestingSchedule()` for individual beneficiaries or `createVestingbatch()` for multiple beneficiaries.
+4. **Activate Vesting**: Use `activateVesting()` to start the vesting process.
+5. **Claim Tokens**: Beneficiaries can claim tokens via `claim()`.
+6. **Revoke Vesting**: If necessary, revoke vesting using `revokeVesting()`.
 
-### `activateVesting(address beneficiary)`
-Activates the vesting timer for a beneficiary. After activation, tokens will start releasing according to the vesting schedule.
+## Security Considerations
 
-- **beneficiary**: Address of the beneficiary whose vesting timer is being activated.
-
-### `release(address beneficiary)`
-Releases tokens to the beneficiary based on their vesting schedule.
-
-- **beneficiary**: Address of the beneficiary to receive the release.
-
-### `getNextReleaseTime(address beneficiary)`
-Returns the next release time for the given beneficiary.
-
-- **beneficiary**: Address of the beneficiary.
-
-### `getVestingDetails(address beneficiary)`
-Returns details about a beneficiary's vesting schedule.
-
-- **beneficiary**: Address of the beneficiary.
-
-Returns:
-- `totalAmount`: Total tokens allocated for the vesting schedule.
-- `releasedAmount`: Amount of tokens already released.
-- `nextReleaseTime`: Timestamp of the next release.
-- `remainingAmount`: Tokens remaining in the vesting schedule.
-- `isActive`: Whether the vesting schedule is active.
-- `timerActivated`: Whether the vesting timer has been activated.
-- `vestingType`: Type of the vesting schedule.
-
-### `deactivateSchedule(address beneficiary)`
-Deactivates the vesting schedule for a specific beneficiary.
-
-- **beneficiary**: Address of the beneficiary whose vesting schedule is being deactivated.
-
-### `pause()`
-Pauses the contract, preventing any further actions.
-
-### `unpause()`
-Unpauses the contract, allowing actions to be performed.
-
-### `getAllBeneficiaries()`
-Returns an array of all beneficiaries who have active vesting schedules.
-
-### `_authorizeUpgrade(address newImplementation)`
-Ensures that only the owner can upgrade the contract to a new implementation.
-
-## Example Use Case
-
-### 1. Create a vesting schedule
-
-```solidity
-VestingParams memory params = VestingParams({
-    beneficiary: 0xAddress,
-    amount: 1000,
-    startTime: block.timestamp + 1 days, // Starts after 1 day
-    vestingType: VestingType.QUARTERLY_25, // 25% quarterly after 12 months
-    customCliffDuration: 0,
-    customVestingDuration: 0,
-    customReleaseInterval: 0,
-    customPercentPerInterval: 0
-});
-createVestingSchedule(params);
-```
-
-### 2. Activate the vesting schedule
-
-```solidity
-activateVesting(0xAddress);
-```
-
-### 3. Release tokens
-
-```solidity
-release(0xAddress);
-```
-
-## Security & Upgradeability
-
-This contract uses **OpenZeppelin's upgradeable contracts**. The contract is fully upgradeable, which allows for future improvements and security fixes without losing the state of the contract.
-
-## Requirements
-
-- **Solidity Version**: ^0.8.19
-- **OpenZeppelin Contracts**: Upgradeable contracts, Pausable, Ownable
-- **Main Token**: Any ERC-20 or BEP-20 token deployed before initializing this contract.
-
-## Deployment Instructions
-
-1. Deploy the main ERC-20 or BEP-20 token contract.
-2. Deploy the `TokenVesting` contract.
-3. Call the `initialize` function with the address of the main token contract.
-4. The owner can then begin creating vesting schedules for beneficiaries.
+- Ensure that only the contract owner (the main token owner) has permission to deposit tokens, create schedules, and manage the contract.
+- Use a proper mechanism to upgrade the contract using the UUPS proxy pattern to ensure future updates can be made without losing data.
+- The contract is pausable to allow emergency halting of operations.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-### Instructions for Future Updates
-
-To update the contract, you can deploy a new implementation and upgrade the contract using the UUPS proxy pattern.
-
+MIT License. See LICENSE for more information.
 
