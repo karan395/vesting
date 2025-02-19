@@ -1,7 +1,6 @@
-
 # TokenVesting Contract
 
-This smart contract allows the creation of customizable vesting schedules for token distributions, designed to be upgradeable, pausable, and ownable. It is intended for the distribution of tokens over time with customizable cliff and vesting durations, with support for both individual and batch vesting schedule creation. 
+This smart contract allows the creation of customizable vesting schedules for token distributions, designed to be upgradeable, pausable, and ownable. It is intended for the distribution of tokens over time with customizable cliff and vesting durations, with support for both individual and batch vesting schedule creation.
 
 ## Features
 
@@ -24,7 +23,7 @@ This smart contract allows the creation of customizable vesting schedules for to
 
 ### 1. **Vesting Schedule Creation**
 
-- **VestingType**: 
+- **VestingType**:
   - `QUARTERLY_25` — Vesting occurs quarterly with 25% of the total amount released each quarter.
   - `QUARTERLY_50` — Vesting occurs quarterly with 50% of the total amount released each quarter.
   - `CUSTOM` — Custom vesting schedules where the cliff duration, vesting duration, release intervals, and percentage per interval can be defined.
@@ -48,6 +47,7 @@ The owner can create multiple vesting schedules for different beneficiaries at o
 ## Functions
 
 ### Public Functions
+
 - **`depositTokens()`**: Deposits tokens into the contract.
 - **`createVestingSchedule(VestingParams calldata params)`**: Creates a vesting schedule for a beneficiary.
 - **`createVestingbatch(VestingParams[] calldata paramsList)`**: Creates multiple vesting schedules in a batch.
@@ -66,6 +66,7 @@ The owner can create multiple vesting schedules for different beneficiaries at o
 - **`getTotalAllocated()`**: Returns the total amount of tokens allocated to beneficiaries.
 
 ### Internal Functions
+
 - **`_calculateReleasableAmount()`**: Internal function to calculate the amount of tokens a beneficiary is eligible to claim.
 - **`_authorizeUpgrade(address newImplementation)`**: Internal function to authorize upgrades for the contract (for upgradeable contracts).
 
@@ -88,3 +89,22 @@ The owner can create multiple vesting schedules for different beneficiaries at o
 
 MIT License. See LICENSE for more information.
 
+how to use and deploy contract
+
+#
+
+1. if main token contrat is already deployed
+2.  deploy vesting contract while passing token contract as parameter
+3.  make sure deploy vesting contract using proxy as it is upgaradbe contarct
+4. now your token contarct owner is you vesting contract owner
+5. now call deposit funds function to deposit funds to contract
+6. now cal create schedule to createvestingschedule
+7. now call activate vesting vesting will get activate after this
+8. now can keep checking vesting schedule
+7. call release to release funds according to vesting release time
+note you have to manually tarsnfer vesting amount to the beneficiary
+8. account can claim there funds if they want through calling claim
+
+#
+
+for using already deployed vesting contract we have to transfer ownership of main contarct to your address and other steps are same as above
